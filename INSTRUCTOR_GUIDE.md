@@ -40,14 +40,14 @@ source im-train-demo-completion.bash
 ```
 
 ```bash
-ssh bootc-user@im-train-db.demo.lab
+ssh -i baseos/demo-key bootc-user@im-train-db.demo.lab
 sudo bootc switch --apply --soft-reboot=auto quay.io/kubealex/image-mode-db:pg16
 ```
 
 After reboot:
 
 ```bash
-ssh bootc-user@im-train-db.demo.lab
+ssh -i baseos/demo-key bootc-user@im-train-db.demo.lab
 sudo systemctl status train-tickets-db
 sudo -u postgres psql -d train_tickets -c 'SELECT count(*) FROM stations;'
 ```
@@ -57,21 +57,20 @@ sudo -u postgres psql -d train_tickets -c 'SELECT count(*) FROM stations;'
 ```bash
 ./im-train-demo build-apps
 ```
-
 ```bash
-ssh bootc-user@im-train-api.demo.lab
+ssh -i baseos/demo-key bootc-user@im-train-api.demo.lab
 sudo bootc switch --apply --soft-reboot=auto quay.io/kubealex/image-mode-backend:v1.0
 ```
 
 ```bash
-ssh bootc-user@im-train.demo.lab
+ssh -i baseos/demo-key bootc-user@im-train.demo.lab
 sudo bootc switch --apply --soft-reboot=auto quay.io/kubealex/image-mode-frontend:v1.0
 ```
 
 After reboot:
 
 ```bash
-ssh bootc-user@im-train-api.demo.lab
+ssh -i baseos/demo-key bootc-user@im-train-api.demo.lab
 curl http://localhost:3001/api/health
 ```
 
@@ -88,19 +87,19 @@ Open browser: `http://im-train.demo.lab:5173`
 ```
 
 ```bash
-ssh bootc-user@im-train-api.demo.lab
+ssh -i baseos/demo-key bootc-user@im-train-api.demo.lab
 sudo bootc switch --apply --soft-reboot=auto quay.io/kubealex/image-mode-backend:v1.1
 ```
 
 ```bash
-ssh bootc-user@im-train.demo.lab
+ssh -i baseos/demo-key bootc-user@im-train.demo.lab
 sudo bootc switch --apply --soft-reboot=auto quay.io/kubealex/image-mode-frontend:v1.1
 ```
 
 After reboot — verify timetable feature:
 
 ```bash
-ssh bootc-user@im-train-api.demo.lab
+ssh -i baseos/demo-key bootc-user@im-train-api.demo.lab
 curl http://localhost:3001/api/timetable
 ```
 
