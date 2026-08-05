@@ -471,7 +471,7 @@ step1_build_baseos() {
 
   local old_sha new_sha
   old_sha=$(podman image inspect --format '{{.Id}}' "${REGISTRY}/image-mode-baseos:rhel10.1" 2>/dev/null || true)
-  podman build --pull=newer -t "${REGISTRY}/image-mode-baseos:rhel10.1" .
+  podman build -t "${REGISTRY}/image-mode-baseos:rhel10.1" .
   new_sha=$(podman image inspect --format '{{.Id}}' "${REGISTRY}/image-mode-baseos:rhel10.1")
 
   if [[ "$old_sha" == "$new_sha" ]]; then
@@ -510,7 +510,7 @@ step2_convert_qcow2() {
   step "Converting baseos:rhel10.1 to qcow2 using bootc-image-builder"
   mkdir -p "$SCRIPT_DIR/output"
 
-  sudo podman run --rm -it --privileged --pull=never \
+  sudo podman run --rm -it --privileged --pull=newer \
     --security-opt label=type:unconfined_t \
     -v "$SCRIPT_DIR/output:/output" \
     -v /var/lib/containers/storage:/var/lib/containers/storage \
@@ -557,7 +557,7 @@ step3_build_db() {
   submodule_checkout . pg16
   bat --paging=never --style=header,grid --language=Dockerfile "$SCRIPT_DIR/db/Containerfile"
   read -rp "Press Enter to continue..."
-  podman build --pull=never --build-arg REGISTRY="${REGISTRY}" -t "${REGISTRY}/image-mode-db:pg16" .
+  podman build --pull=newer --build-arg REGISTRY="${REGISTRY}" -t "${REGISTRY}/image-mode-db:pg16" .
   podman tag "${REGISTRY}/image-mode-db:pg16" "${REGISTRY}/image-mode-db:pg16-rhel10.1"
 
   step "Pushing image-mode-db:pg16 + pg16-rhel10.1"
@@ -613,7 +613,7 @@ step4_build_apps() {
   submodule_checkout . v1.0
   bat --paging=never --style=header,grid --language=Dockerfile "$SCRIPT_DIR/backend/Containerfile"
   read -rp "Press Enter to continue..."
-  podman build --pull=never \
+  podman build --pull=newer \
     --build-arg REGISTRY="${REGISTRY}" \
     --build-arg DB_HOST="${VM_DB}" \
     -t "${REGISTRY}/image-mode-backend:v1.0" .
@@ -628,7 +628,7 @@ step4_build_apps() {
   submodule_checkout . v1.0
   bat --paging=never --style=header,grid --language=Dockerfile "$SCRIPT_DIR/frontend/Containerfile"
   read -rp "Press Enter to continue..."
-  podman build --pull=never \
+  podman build --pull=newer \
     --build-arg REGISTRY="${REGISTRY}" \
     --build-arg API_HOST="${VM_BACKEND}" \
     -t "${REGISTRY}/image-mode-frontend:v1.0" .
@@ -698,7 +698,7 @@ step5a_build_apps() {
   submodule_checkout . v1.1
   bat --paging=never --style=header,grid --language=Dockerfile "$SCRIPT_DIR/backend/Containerfile"
   read -rp "Press Enter to continue..."
-  podman build --pull=never \
+  podman build --pull=newer \
     --build-arg REGISTRY="${REGISTRY}" \
     --build-arg DB_HOST="${VM_DB}" \
     -t "${REGISTRY}/image-mode-backend:v1.1" .
@@ -713,7 +713,7 @@ step5a_build_apps() {
   submodule_checkout . v1.1
   bat --paging=never --style=header,grid --language=Dockerfile "$SCRIPT_DIR/frontend/Containerfile"
   read -rp "Press Enter to continue..."
-  podman build --pull=never \
+  podman build --pull=newer \
     --build-arg REGISTRY="${REGISTRY}" \
     --build-arg API_HOST="${VM_BACKEND}" \
     -t "${REGISTRY}/image-mode-frontend:v1.1" .
@@ -774,7 +774,7 @@ step5b_build_baseos() {
 
   local old_sha new_sha
   old_sha=$(podman image inspect --format '{{.Id}}' "${REGISTRY}/image-mode-baseos:rhel10.2" 2>/dev/null || true)
-  podman build --pull=newer -t "${REGISTRY}/image-mode-baseos:rhel10.2" .
+  podman build -t "${REGISTRY}/image-mode-baseos:rhel10.2" .
   new_sha=$(podman image inspect --format '{{.Id}}' "${REGISTRY}/image-mode-baseos:rhel10.2")
 
   if [[ "$old_sha" == "$new_sha" ]]; then
@@ -832,7 +832,7 @@ step5c_rebuild_db() {
   submodule_checkout . pg16
   bat --paging=never --style=header,grid --language=Dockerfile "$SCRIPT_DIR/db/Containerfile"
   read -rp "Press Enter to continue..."
-  podman build --pull=never --build-arg REGISTRY="${REGISTRY}" -t "${REGISTRY}/image-mode-db:pg16" .
+  podman build --pull=newer --build-arg REGISTRY="${REGISTRY}" -t "${REGISTRY}/image-mode-db:pg16" .
   podman tag "${REGISTRY}/image-mode-db:pg16" "${REGISTRY}/image-mode-db:pg16-rhel10.2"
   podman push "${REGISTRY}/image-mode-db:pg16"
   podman push "${REGISTRY}/image-mode-db:pg16-rhel10.2"
@@ -875,7 +875,7 @@ step5c_rebuild_all() {
   submodule_checkout . pg16
   bat --paging=never --style=header,grid --language=Dockerfile "$SCRIPT_DIR/db/Containerfile"
   read -rp "Press Enter to continue..."
-  podman build --pull=never --build-arg REGISTRY="${REGISTRY}" -t "${REGISTRY}/image-mode-db:pg16" .
+  podman build --pull=newer --build-arg REGISTRY="${REGISTRY}" -t "${REGISTRY}/image-mode-db:pg16" .
   podman tag "${REGISTRY}/image-mode-db:pg16" "${REGISTRY}/image-mode-db:pg16-rhel10.2"
   podman push "${REGISTRY}/image-mode-db:pg16"
   podman push "${REGISTRY}/image-mode-db:pg16-rhel10.2"
@@ -885,7 +885,7 @@ step5c_rebuild_all() {
   submodule_checkout . v1.1
   bat --paging=never --style=header,grid --language=Dockerfile "$SCRIPT_DIR/backend/Containerfile"
   read -rp "Press Enter to continue..."
-  podman build --pull=never \
+  podman build --pull=newer \
     --build-arg REGISTRY="${REGISTRY}" \
     --build-arg DB_HOST="${VM_DB}" \
     -t "${REGISTRY}/image-mode-backend:v1.1" .
@@ -898,7 +898,7 @@ step5c_rebuild_all() {
   submodule_checkout . v1.1
   bat --paging=never --style=header,grid --language=Dockerfile "$SCRIPT_DIR/frontend/Containerfile"
   read -rp "Press Enter to continue..."
-  podman build --pull=never \
+  podman build --pull=newer \
     --build-arg REGISTRY="${REGISTRY}" \
     --build-arg API_HOST="${VM_BACKEND}" \
     -t "${REGISTRY}/image-mode-frontend:v1.1" .
@@ -959,7 +959,7 @@ _prebuild_baseos() {
 
   local old_sha new_sha
   old_sha=$(podman image inspect --format '{{.Id}}' "${REGISTRY}/image-mode-baseos:${tag}" 2>/dev/null || true)
-  podman build --pull=newer -t "${REGISTRY}/image-mode-baseos:${tag}" .
+  podman build -t "${REGISTRY}/image-mode-baseos:${tag}" .
   new_sha=$(podman image inspect --format '{{.Id}}' "${REGISTRY}/image-mode-baseos:${tag}")
 
   if [[ "$old_sha" == "$new_sha" ]]; then
