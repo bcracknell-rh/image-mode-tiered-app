@@ -793,12 +793,6 @@ step5b_build_baseos() {
   podman push "${REGISTRY}/image-mode-baseos:rhel10.2"
   podman push "${REGISTRY}/image-mode-baseos:latest"
 
-  step "Re-pulling from registry (compressed layers for bootc)"
-  podman rmi --force "${REGISTRY}/image-mode-baseos:rhel10.2" "${REGISTRY}/image-mode-baseos:latest" 2>/dev/null || true
-  podman image prune --force >/dev/null
-  podman pull "${REGISTRY}/image-mode-baseos:rhel10.2"
-  podman pull "${REGISTRY}/image-mode-baseos:latest"
-
   submodule_restore_ref "$SCRIPT_DIR/baseos" "$saved_ref"
 
   echo ""
