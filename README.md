@@ -38,6 +38,13 @@ A three-tier train ticket booking application designed to run as RHEL bootc/imag
 | backend | `v1.1`, `v1.0` |
 | db | `pg16` |
 
+## Prerequisites
+
+- `podman` installed and authenticated to `registry.redhat.io` and `quay.io`
+- `libvirt`/KVM hypervisor for VM provisioning
+- `bat` (optional, for Containerfile syntax highlighting during the demo)
+- SSH access to VMs once provisioned
+
 ## Getting Started
 
 ### Clone
@@ -53,41 +60,74 @@ If you already cloned without `--recurse-submodules`:
 git submodule update --init
 ```
 
-### Build Images
-
-Requires `podman` and authentication to `registry.redhat.io` (for the RHEL bootc base).
-
-Build all images using the latest tags:
+### Pull updates
 
 ```bash
-./build-and-push.sh --no-push
+git pull && git submodule update --init --recursive
 ```
 
-Build and push to a registry:
+## Running the Demo
+
+The entire demo lifecycle is driven by `im-train-demo`. On first run it prompts for the container registry and VM hostnames, saving them to `.demo-config` for subsequent executions.
+
+### Day 1 — Initial deployment
 
 ```bash
-# Uses quay.io/kubealex by default
-./build-and-push.sh
-
-# Use a different registry
-./build-and-push.sh --registry quay.io/myorg
+im-train-demo infra           # Set up libvirt network and storage pool
+im-train-demo build-baseos    # Build base OS image (RHEL 10.1)
+im-train-demo deploy-vms      # Convert to qcow2 and provision 3 VMs
+im-train-demo build-db        # Build and deploy database (PostgreSQL)
+im-train-demo build-apps      # Build and deploy apps v1.0 (backend + frontend)
 ```
 
-Build specific versions:
+Or run the full day-1 flow in one command:
 
 ```bash
-./build-and-push.sh --baseos-tag rhel10.1 --frontend-tag v1.0 --backend-tag v1.0
+im-train-demo all
 ```
 
-Build with custom hostnames (baked into the image):
+### Day 2 — Upgrade scenarios
 
 ```bash
-./build-and-push.sh --db-host db.example.com --api-host backend.example.com
+im-train-demo release-app     # App release: build and deploy v1.1 on RHEL 10.1
+im-train-demo upgrade-baseos  # Ops: build new base OS (RHEL 10.2)
+im-train-demo upgrade-db      # Rebuild DB on RHEL 10.2 and upgrade DB VM
+im-train-demo upgrade-vms     # Rebuild all on RHEL 10.2 and upgrade VMs
 ```
 
-Run `./build-and-push.sh --help` for all options.
+### Other commands
 
-### Pre-built Images
+```bash
+im-train-demo show-containerfiles  # Walk through all Containerfiles
+im-train-demo prebuild             # Build and push ALL image variants upfront
+im-train-demo cleanup              # Destroy all VMs, storage pool, network, and config
+```
+
+### Configuration
+
+On first run, `im-train-demo` prompts for:
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| Registry | `quay.io/kubealex` | Container registry for pushing/pulling images |
+| Domain | `demo.lab` | DNS domain for the libvirt network |
+| DB VM | `im-train-db` | Database VM short name |
+| Backend VM | `im-train-api` | Backend VM short name |
+| Frontend VM | `im-train` | Frontend VM short name |
+
+These are saved to `.demo-config` and reused across executions. Delete the file to reconfigure.
+
+Environment variables can override defaults before the first run:
+
+| Variable | Description |
+|----------|-------------|
+| `REGISTRY` | Container registry prefix |
+| `VM_USER` | SSH user (default: `bootc-user`) |
+| `VM_VCPUS` | vCPUs per VM (default: `2`) |
+| `VM_RAM` | RAM in MiB per VM (default: `4096`) |
+| `VM_DISK` | Disk size in GiB per VM (default: `20`) |
+
+## Pre-built Images
 
 All images are available on Quay.io:
 
@@ -98,56 +138,33 @@ podman pull quay.io/kubealex/image-mode-backend:v1.1
 podman pull quay.io/kubealex/image-mode-db:pg16
 ```
 
-## Configuration
+## Runtime Configuration
 
-Hostnames can be set at **build time** (baked into the image via `.env` files) or overridden at **runtime** (environment file on the host). The apps read configuration from their own `.env` files; the systemd services provide an optional `EnvironmentFile` for runtime overrides.
-
-### Build-Time Configuration (Containerfile ARGs)
-
-Pass `--build-arg` to `podman build`, or use the `build-and-push.sh` flags:
-
-| Flag | Containerfile ARG | Default | Description |
-|------|------------------|---------|-------------|
-| `--db-host` | `DB_HOST` | `localhost` | PostgreSQL hostname for the backend |
-| `--api-host` | `API_HOST` | `localhost` | Backend hostname for the frontend proxy |
-
-### Runtime Configuration (Environment Files)
-
-The backend and frontend systemd services read optional environment files at boot, which override the build-time defaults.
+Hostnames are set at build time via Containerfile ARGs. They can be overridden at runtime via environment files on the host.
 
 ### Backend
 
-Create `/etc/train-tickets/backend.env` on the backend host:
+Create `/etc/train-tickets/backend.env`:
 
 ```env
 DB_HOST=db-hostname
 ```
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `DB_HOST` | `localhost` | PostgreSQL hostname |
-
 ### Frontend
 
-Create `/etc/train-tickets/frontend.env` on the frontend host:
+Create `/etc/train-tickets/frontend.env`:
 
 ```env
 API_HOST=backend-hostname
 ```
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `API_HOST` | `localhost` | Backend API hostname |
-
 ### Database
 
-Default credentials: `postgres` / `postgres`, database `train_tickets`, port `5432`.
-
-The database initializes automatically on first boot — no manual setup required.
+Default credentials: `postgres` / `postgres`, database `train_tickets`, port `5432`. The database initializes automatically on first boot.
 
 ### bootc-api Status Service
 
-Every tier includes [bootc-api](https://github.com/kubealex/bootc-api), a lightweight status service installed in the base OS image. It runs on port `8005` and exposes the bootc image-mode status via REST endpoints:
+Every tier includes [bootc-api](https://github.com/kubealex/bootc-api) on port `8005`:
 
 | Endpoint | Description |
 |----------|-------------|
@@ -158,17 +175,9 @@ Every tier includes [bootc-api](https://github.com/kubealex/bootc-api), a lightw
 | `GET /api/v1/status/update-available` | Whether an update is cached/staged |
 | `GET /health` | Health check |
 
-The frontend Status page aggregates bootc status from all three tiers, showing each VM's booted image, digest, OS version, architecture, and update availability.
+## References
 
-## Updating Submodules
-
-To move a submodule to a newer tag:
-
-```bash
-cd frontend
-git fetch --tags
-git checkout v1.1
-cd ..
-git add frontend
-git commit -m "Update frontend to v1.1"
-```
+- [bootc documentation](https://bootc.dev/bootc/)
+- [bootc-image-builder](https://github.com/osbuild/bootc-image-builder)
+- [RHEL 10 soft reboot documentation](https://docs.redhat.com/en/documentation/red_hat_enterprise_linux/10/html/using_image_mode_for_rhel_to_build_deploy_and_manage_operating_systems/performing-soft-reboots-to-rhel-bootc-images)
+- [Image mode for RHEL 10: Updates in seconds with soft reboot](https://developers.redhat.com/articles/2025/11/17/image-mode-rhel-10-updates-seconds-soft-reboot)
