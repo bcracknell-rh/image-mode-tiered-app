@@ -471,7 +471,7 @@ step1_build_baseos() {
 
   local old_sha new_sha
   old_sha=$(podman image inspect --format '{{.Id}}' "${REGISTRY}/image-mode-baseos:rhel10.1" 2>/dev/null || true)
-  podman build -t "${REGISTRY}/image-mode-baseos:rhel10.1" .
+  podman build --pull=newer -t "${REGISTRY}/image-mode-baseos:rhel10.1" .
   new_sha=$(podman image inspect --format '{{.Id}}' "${REGISTRY}/image-mode-baseos:rhel10.1")
 
   if [[ "$old_sha" == "$new_sha" ]]; then
@@ -774,7 +774,7 @@ step5b_build_baseos() {
 
   local old_sha new_sha
   old_sha=$(podman image inspect --format '{{.Id}}' "${REGISTRY}/image-mode-baseos:rhel10.2" 2>/dev/null || true)
-  podman build -t "${REGISTRY}/image-mode-baseos:rhel10.2" .
+  podman build --pull=newer -t "${REGISTRY}/image-mode-baseos:rhel10.2" .
   new_sha=$(podman image inspect --format '{{.Id}}' "${REGISTRY}/image-mode-baseos:rhel10.2")
 
   if [[ "$old_sha" == "$new_sha" ]]; then
@@ -959,7 +959,7 @@ _prebuild_baseos() {
 
   local old_sha new_sha
   old_sha=$(podman image inspect --format '{{.Id}}' "${REGISTRY}/image-mode-baseos:${tag}" 2>/dev/null || true)
-  podman build -t "${REGISTRY}/image-mode-baseos:${tag}" .
+  podman build --pull=newer -t "${REGISTRY}/image-mode-baseos:${tag}" .
   new_sha=$(podman image inspect --format '{{.Id}}' "${REGISTRY}/image-mode-baseos:${tag}")
 
   if [[ "$old_sha" == "$new_sha" ]]; then
