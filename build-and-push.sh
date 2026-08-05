@@ -59,7 +59,7 @@ build_component() {
     build_args+=(--build-arg "$arg")
   done
 
-  podman build --pull=always --build-arg "REGISTRY=${REGISTRY}" ${build_args[@]+"${build_args[@]}"} -t "${REGISTRY}/${image}:${tag}" "$dir"
+  podman build --pull=newer --build-arg "REGISTRY=${REGISTRY}" ${build_args[@]+"${build_args[@]}"} -t "${REGISTRY}/${image}:${tag}" "$dir"
 
   if [[ -n "$extra_tag" ]]; then
     podman tag "${REGISTRY}/${image}:${tag}" "${REGISTRY}/${image}:${extra_tag}"
