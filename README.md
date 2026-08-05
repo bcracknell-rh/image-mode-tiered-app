@@ -103,6 +103,8 @@ im-train-demo prebuild             # Build and push ALL image variants upfront
 im-train-demo cleanup              # Destroy all VMs, storage pool, network, and config
 ```
 
+For detailed step-by-step instructions including SSH commands and verification steps, see the [Instructor Guide](INSTRUCTOR_GUIDE.md).
+
 ### Configuration
 
 On first run, `im-train-demo` prompts for:
