@@ -469,19 +469,7 @@ step1_build_baseos() {
   cd "$SCRIPT_DIR/baseos"
   submodule_checkout . rhel10.1
 
-  local old_sha new_sha
-  old_sha=$(podman image inspect --format '{{.Id}}' "${REGISTRY}/image-mode-baseos:rhel10.1" 2>/dev/null || true)
   podman build --pull=newer -t "${REGISTRY}/image-mode-baseos:rhel10.1" .
-  new_sha=$(podman image inspect --format '{{.Id}}' "${REGISTRY}/image-mode-baseos:rhel10.1")
-
-  if [[ "$old_sha" == "$new_sha" ]]; then
-    step "Image unchanged — tagging :latest (skipping push)"
-    podman tag "${REGISTRY}/image-mode-baseos:rhel10.1" "${REGISTRY}/image-mode-baseos:latest"
-    submodule_restore_ref "$SCRIPT_DIR/baseos" "$saved_ref"
-    echo ""
-    step "baseos:latest now points to RHEL 10.1 (cached)"
-    return
-  fi
 
   podman tag "${REGISTRY}/image-mode-baseos:rhel10.1" "${REGISTRY}/image-mode-baseos:latest"
 
@@ -773,19 +761,7 @@ step5b_build_baseos() {
   cd "$SCRIPT_DIR/baseos"
   submodule_checkout . rhel10.2
 
-  local old_sha new_sha
-  old_sha=$(podman image inspect --format '{{.Id}}' "${REGISTRY}/image-mode-baseos:rhel10.2" 2>/dev/null || true)
   podman build --pull=newer -t "${REGISTRY}/image-mode-baseos:rhel10.2" .
-  new_sha=$(podman image inspect --format '{{.Id}}' "${REGISTRY}/image-mode-baseos:rhel10.2")
-
-  if [[ "$old_sha" == "$new_sha" ]]; then
-    step "Image unchanged — tagging :latest (skipping push)"
-    podman tag "${REGISTRY}/image-mode-baseos:rhel10.2" "${REGISTRY}/image-mode-baseos:latest"
-    submodule_restore_ref "$SCRIPT_DIR/baseos" "$saved_ref"
-    echo ""
-    step "baseos:latest now points to RHEL 10.2 (cached)"
-    return
-  fi
 
   podman tag "${REGISTRY}/image-mode-baseos:rhel10.2" "${REGISTRY}/image-mode-baseos:latest"
 
@@ -953,18 +929,7 @@ _prebuild_baseos() {
   cd "$SCRIPT_DIR/baseos"
   submodule_checkout . "$tag"
 
-  local old_sha new_sha
-  old_sha=$(podman image inspect --format '{{.Id}}' "${REGISTRY}/image-mode-baseos:${tag}" 2>/dev/null || true)
   podman build --pull=newer -t "${REGISTRY}/image-mode-baseos:${tag}" .
-  new_sha=$(podman image inspect --format '{{.Id}}' "${REGISTRY}/image-mode-baseos:${tag}")
-
-  if [[ "$old_sha" == "$new_sha" ]]; then
-    step "Image unchanged (skipping push)"
-    submodule_restore_ref "$SCRIPT_DIR/baseos" "$saved_ref"
-    echo ""
-    step "baseos:${tag} ready (cached)"
-    return
-  fi
 
   step "Pushing baseos:${tag}"
   podman push "${REGISTRY}/image-mode-baseos:${tag}"
