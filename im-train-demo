@@ -75,11 +75,7 @@ submodule_save_ref() {
 
 submodule_checkout() {
   local dir="$1" branch="$2"
-  git -C "$dir" fetch origin --quiet 2>/dev/null || true
   git -C "$dir" checkout "$branch" --quiet
-  if git -C "$dir" rev-parse --verify "origin/$branch" &>/dev/null; then
-    git -C "$dir" reset --hard "origin/$branch" --quiet
-  fi
 }
 
 submodule_restore_ref() {
@@ -952,6 +948,44 @@ step5c_upgrade_vms() {
 # ─────────────────────────────────────────────────────────────
 # Prebuild — build all images upfront so demo steps are instant
 # ─────────────────────────────────────────────────────────────
+_prebuild_baseos() {
+  local tag="$1"
+  ensure_registry_config
+
+  local saved_ref
+  saved_ref=$(submodule_save_ref "$SCRIPT_DIR/baseos")
+
+  step "Building baseos:${tag}"
+  cd "$SCRIPT_DIR/baseos"
+  submodule_checkout . "$tag"
+
+  local old_sha new_sha
+  old_sha=$(podman image inspect --format '{{.Id}}' "${REGISTRY}/image-mode-baseos:${tag}" 2>/dev/null || true)
+  podman build --pull=newer -t "${REGISTRY}/image-mode-baseos:${tag}" .
+  new_sha=$(podman image inspect --format '{{.Id}}' "${REGISTRY}/image-mode-baseos:${tag}")
+
+  if [[ "$old_sha" == "$new_sha" ]]; then
+    step "Image unchanged (skipping push)"
+    submodule_restore_ref "$SCRIPT_DIR/baseos" "$saved_ref"
+    echo ""
+    step "baseos:${tag} ready (cached)"
+    return
+  fi
+
+  step "Pushing baseos:${tag}"
+  podman push "${REGISTRY}/image-mode-baseos:${tag}"
+
+  step "Re-pulling from registry (compressed layers for bootc)"
+  podman rmi --force "${REGISTRY}/image-mode-baseos:${tag}" 2>/dev/null || true
+  podman image prune --force >/dev/null
+  podman pull "${REGISTRY}/image-mode-baseos:${tag}"
+
+  submodule_restore_ref "$SCRIPT_DIR/baseos" "$saved_ref"
+
+  echo ""
+  step "baseos:${tag} ready on ${REGISTRY}"
+}
+
 prebuild() {
   ensure_vm_config
   banner "Prebuild: Building all images"
@@ -961,7 +995,8 @@ prebuild() {
   echo ""
 
   step "=== Base OS RHEL 10.1 ==="
-  step1_build_baseos
+  _prebuild_baseos rhel10.1
+  podman tag "${REGISTRY}/image-mode-baseos:rhel10.1" "${REGISTRY}/image-mode-baseos:latest"
   echo ""
 
   step "=== Database (pg16) on RHEL 10.1 ==="
@@ -977,7 +1012,8 @@ prebuild() {
   echo ""
 
   step "=== Base OS RHEL 10.2 ==="
-  step5b_build_baseos
+  _prebuild_baseos rhel10.2
+  podman tag "${REGISTRY}/image-mode-baseos:rhel10.2" "${REGISTRY}/image-mode-baseos:latest"
   echo ""
 
   step "=== Database (pg16) + Apps v1.1 on RHEL 10.2 ==="
