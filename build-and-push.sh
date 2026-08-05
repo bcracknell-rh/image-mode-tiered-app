@@ -59,7 +59,7 @@ build_component() {
     build_args+=(--build-arg "$arg")
   done
 
-  podman build --build-arg "REGISTRY=${REGISTRY}" ${build_args[@]+"${build_args[@]}"} -t "${REGISTRY}/${image}:${tag}" "$dir"
+  podman build --no-cache --build-arg "REGISTRY=${REGISTRY}" ${build_args[@]+"${build_args[@]}"} -t "${REGISTRY}/${image}:${tag}" "$dir"
 
   if [[ -n "$extra_tag" ]]; then
     podman tag "${REGISTRY}/${image}:${tag}" "${REGISTRY}/${image}:${extra_tag}"
@@ -118,6 +118,23 @@ else
   build_component "$SCRIPT_DIR/baseos" "image-mode-baseos" "$BASEOS_TAG"
 fi
 
+if [[ "$PUSH" == "true" ]]; then
+  echo ""
+  echo "=== Pushing baseos and re-pulling compressed layers ==="
+  push_image "image-mode-baseos" "$BASEOS_TAG"
+  if [[ "$BASEOS_TAG" == "$BASEOS_LATEST_TAG" ]]; then
+    push_image "image-mode-baseos" "latest"
+  fi
+  podman rmi --force "${REGISTRY}/image-mode-baseos:${BASEOS_TAG}" 2>/dev/null || true
+  podman rmi --force "${REGISTRY}/image-mode-baseos:latest" 2>/dev/null || true
+  podman image prune --force >/dev/null
+  podman pull "${REGISTRY}/image-mode-baseos:${BASEOS_TAG}"
+  if [[ "$BASEOS_TAG" == "$BASEOS_LATEST_TAG" ]]; then
+    podman tag "${REGISTRY}/image-mode-baseos:${BASEOS_TAG}" "${REGISTRY}/image-mode-baseos:latest"
+  fi
+  BASEOS_PUSHED=true
+fi
+
 build_component "$SCRIPT_DIR/db" "image-mode-db" "$DB_TAG" ""
 
 BACKEND_BUILD_ARGS=()
@@ -131,10 +148,6 @@ build_component "$SCRIPT_DIR/frontend" "image-mode-frontend" "$FRONTEND_TAG" "" 
 if [[ "$PUSH" == "true" ]]; then
   echo ""
   echo "=== Pushing images ==="
-  push_image "image-mode-baseos" "$BASEOS_TAG"
-  if [[ "$BASEOS_TAG" == "$BASEOS_LATEST_TAG" ]]; then
-    push_image "image-mode-baseos" "latest"
-  fi
   push_image "image-mode-db"       "$DB_TAG"
   push_image "image-mode-backend"  "$BACKEND_TAG"
   push_image "image-mode-frontend" "$FRONTEND_TAG"

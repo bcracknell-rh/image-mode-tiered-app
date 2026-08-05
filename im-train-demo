@@ -1,13 +1,13 @@
 #!/bin/bash
 set -euo pipefail
 
-REGISTRY=${REGISTRY:-quay.io/kubealex}
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 VM_IMAGES_DIR="$SCRIPT_DIR/vm-images"
 CONFIG_FILE="$SCRIPT_DIR/.demo-config"
 VM_VCPUS=${VM_VCPUS:-2}
 VM_RAM=${VM_RAM:-4096}
 VM_DISK=${VM_DISK:-20}
+REGISTRY=${REGISTRY:-quay.io/kubealex}
 
 BOLD='\033[1m'
 DIM='\033[2m'
@@ -24,6 +24,16 @@ DEFAULT_BACKEND_SHORT="im-train-api"
 DEFAULT_FRONTEND_SHORT="im-train"
 DEFAULT_SUBNET="192.168.150.0/24"
 
+DOMAIN=""
+VM_DB_SHORT=""
+VM_BACKEND_SHORT=""
+VM_FRONTEND_SHORT=""
+VM_DB=""
+VM_BACKEND=""
+VM_FRONTEND=""
+SUBNET=""
+
+REGISTRY_CONFIG_LOADED=false
 VM_CONFIG_LOADED=false
 INFRA_CONFIG_LOADED=false
 
@@ -65,8 +75,8 @@ submodule_save_ref() {
 
 submodule_checkout() {
   local dir="$1" branch="$2"
-  git -C "$dir" fetch origin --quiet
-  git -C "$dir" checkout "$branch" --quiet 2>/dev/null
+  git -C "$dir" fetch origin --quiet 2>/dev/null || true
+  git -C "$dir" checkout "$branch" --quiet
   if git -C "$dir" rev-parse --verify "origin/$branch" &>/dev/null; then
     git -C "$dir" reset --hard "origin/$branch" --quiet
   fi
@@ -78,9 +88,34 @@ submodule_restore_ref() {
 }
 
 # ─────────────────────────────────────────────────────────────
+# Config: load or prompt for container registry
+# ─────────────────────────────────────────────────────────────
+ensure_registry_config() {
+  [[ "$REGISTRY_CONFIG_LOADED" == "true" ]] && return
+
+  if [[ -f "$CONFIG_FILE" ]] && grep -q '^REGISTRY=' "$CONFIG_FILE"; then
+    source "$CONFIG_FILE"
+    REGISTRY_CONFIG_LOADED=true
+    return
+  fi
+
+  echo -e "${BOLD}${CYAN}Container Registry Configuration${RESET}"
+  echo ""
+
+  local registry
+  read -r -p "  Registry [${REGISTRY}]: " registry
+  REGISTRY="${registry:-$REGISTRY}"
+  echo ""
+
+  _save_config
+  REGISTRY_CONFIG_LOADED=true
+}
+
+# ─────────────────────────────────────────────────────────────
 # Config: load or prompt for VM hostnames
 # ─────────────────────────────────────────────────────────────
 ensure_vm_config() {
+  ensure_registry_config
   [[ "$VM_CONFIG_LOADED" == "true" ]] && return
 
   if [[ -f "$CONFIG_FILE" ]]; then
@@ -142,13 +177,14 @@ _derive_names() {
 
 _save_config() {
   cat > "$CONFIG_FILE" <<CONF
-DOMAIN="${DOMAIN}"
-VM_DB_SHORT="${VM_DB_SHORT}"
-VM_BACKEND_SHORT="${VM_BACKEND_SHORT}"
-VM_FRONTEND_SHORT="${VM_FRONTEND_SHORT}"
-VM_DB="${VM_DB}"
-VM_BACKEND="${VM_BACKEND}"
-VM_FRONTEND="${VM_FRONTEND}"
+REGISTRY="${REGISTRY}"
+${DOMAIN:+DOMAIN="${DOMAIN}"}
+${VM_DB_SHORT:+VM_DB_SHORT="${VM_DB_SHORT}"}
+${VM_BACKEND_SHORT:+VM_BACKEND_SHORT="${VM_BACKEND_SHORT}"}
+${VM_FRONTEND_SHORT:+VM_FRONTEND_SHORT="${VM_FRONTEND_SHORT}"}
+${VM_DB:+VM_DB="${VM_DB}"}
+${VM_BACKEND:+VM_BACKEND="${VM_BACKEND}"}
+${VM_FRONTEND:+VM_FRONTEND="${VM_FRONTEND}"}
 ${SUBNET:+SUBNET="${SUBNET}"}
 CONF
 }
@@ -427,6 +463,7 @@ show_containerfiles() {
 # Step 1 — Build Base OS (RHEL 10.1)
 # ─────────────────────────────────────────────────────────────
 step1_build_baseos() {
+  ensure_registry_config
   banner "Step 1 — Build Base OS (RHEL 10.1)"
 
   local saved_ref
@@ -502,6 +539,7 @@ step2_convert_qcow2() {
 # Step 3 — Build and deploy database (PostgreSQL)
 # ─────────────────────────────────────────────────────────────
 step3_build_db() {
+  ensure_registry_config
   banner "Step 3 — Build Database Image (PostgreSQL)"
 
   step "Verifying baseos:latest matches RHEL 10.1"
@@ -729,6 +767,7 @@ step5a_update_vms() {
 #   Build and publish baseos:rhel10.2, re-tag as :latest
 # ─────────────────────────────────────────────────────────────
 step5b_build_baseos() {
+  ensure_registry_config
   banner "Step 5b — Ops: Build Base OS (RHEL 10.2)"
 
   local saved_ref
@@ -995,7 +1034,7 @@ usage() {
   echo "  im-train-demo cleanup          # Tear down everything"
   echo ""
   echo "Environment:"
-  echo "  REGISTRY       Container registry (default: quay.io/kubealex)"
+  echo "  REGISTRY       Container registry (prompted on first run, saved to .demo-config)"
   echo "  VM_USER        SSH user (default: bootc-user)"
   echo "  VM_VCPUS       vCPUs per VM (default: 2)"
   echo "  VM_RAM         RAM in MiB per VM (default: 4096)"
