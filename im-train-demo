@@ -75,6 +75,7 @@ submodule_save_ref() {
 
 submodule_checkout() {
   local dir="$1" branch="$2"
+  GIT_TERMINAL_PROMPT=0 git -C "$dir" fetch origin --tags --force --quiet 2>/dev/null || true
   git -C "$dir" checkout "$branch" --quiet
 }
 
