@@ -115,7 +115,7 @@ ensure_vm_config() {
   ensure_registry_config
   [[ "$VM_CONFIG_LOADED" == "true" ]] && return
 
-  if [[ -f "$CONFIG_FILE" ]]; then
+  if [[ -f "$CONFIG_FILE" ]] && grep -q '^DOMAIN=' "$CONFIG_FILE"; then
     source "$CONFIG_FILE"
     VM_CONFIG_LOADED=true
     if [[ -n "${SUBNET:-}" ]]; then
