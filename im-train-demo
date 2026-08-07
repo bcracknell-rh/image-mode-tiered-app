@@ -193,6 +193,11 @@ setup_network() {
   ensure_infra_config
   banner "Infrastructure: Configure libvirt network"
 
+  if sudo virsh net-info "${NETWORK_NAME}" &>/dev/null; then
+    step "Network ${NETWORK_NAME} already exists — skipping"
+    return
+  fi
+
   local subnet_cidr="${SUBNET%%/*}"
   local subnet_base="${subnet_cidr%.*}"
   local subnet_gw="${subnet_base}.1"
@@ -258,6 +263,11 @@ setup_pool() {
 
   local pool_name="${DOMAIN}"
   local pool_path="/var/lib/libvirt/images/${DOMAIN}"
+
+  if sudo virsh pool-info "${pool_name}" &>/dev/null; then
+    step "Storage pool ${pool_name} already exists — skipping"
+    return
+  fi
 
   step "Creating storage pool: ${pool_name} at ${pool_path}"
   sudo mkdir -p "${pool_path}"
