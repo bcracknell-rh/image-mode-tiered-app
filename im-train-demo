@@ -1089,6 +1089,14 @@ prebuild() {
 
   step "=== Base OS RHEL 10.2 ==="
   _prebuild_baseos rhel10.2
+  podman tag "${REGISTRY}/image-mode-baseos:rhel10.2" "${REGISTRY}/image-mode-baseos:latest"
+  step "Pushing baseos:latest"
+  podman push "${REGISTRY}/image-mode-baseos:latest"
+  step "Re-pulling from registry (compressed layers for bootc)"
+  podman rmi --force "${REGISTRY}/image-mode-baseos:rhel10.2" "${REGISTRY}/image-mode-baseos:latest" 2>/dev/null || true
+  podman image prune --force >/dev/null
+  podman pull "${REGISTRY}/image-mode-baseos:rhel10.2"
+  podman pull "${REGISTRY}/image-mode-baseos:latest"
   echo ""
 
   step "=== Database (pg16) + Apps v1.1 on RHEL 10.2 ==="
