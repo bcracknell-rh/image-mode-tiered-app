@@ -109,6 +109,83 @@ ensure_registry_config() {
 }
 
 # ─────────────────────────────────────────────────────────────
+# Config: ssh and dns resolution
+# ─────────────────────────────────────────────────────────────
+
+VM_BOOT_TIMEOUT=${VM_BOOT_TIMEOUT:-300}
+
+subnet_gateway() {
+  local cidr="${SUBNET%%/*}"
+  echo "${cidr%.*}.1"
+}
+
+strip_managed_hosts_block() {
+  local tmp; tmp=$(mktemp)
+  awk '/# >>> im-train-demo >>>/{skip=1;next}
+       /# <<< im-train-demo <<</{skip=0;next}
+       !skip{print}' /etc/hosts > "$tmp"
+  sudo cp "$tmp" /etc/hosts; rm -f "$tmp"
+}
+
+wait_for_vm_dns() {
+  local gw waited=0
+  gw=$(subnet_gateway)
+  local -A resolved=()
+  local remaining=("$@")
+
+  while (( waited < VM_BOOT_TIMEOUT && ${#remaining[@]} > 0 )); do
+    local still_waiting=()
+    for fqdn in "${remaining[@]}"; do
+      local ip
+      ip=$(dig @"${gw}" "${fqdn}" +short 2>/dev/null | tail -1)
+      if [[ -n "$ip" ]]; then
+        resolved["$fqdn"]="$ip"
+        info "${fqdn} -> ${ip} (after ${waited}s)" >&2
+      else
+        still_waiting+=("$fqdn")
+      fi
+    done
+    remaining=("${still_waiting[@]}")
+    if (( ${#remaining[@]} > 0 )); then
+      sleep 5; waited=$((waited+5))
+      info "Still waiting on: ${remaining[*]} (${waited}s/${VM_BOOT_TIMEOUT}s)" >&2
+    fi
+  done
+
+  for fqdn in "$@"; do
+    [[ -n "${resolved[$fqdn]:-}" ]] && echo "${fqdn} ${resolved[$fqdn]}"
+  done
+}
+
+sync_hosts_file() {
+  banner "Configuring /etc/hosts for VM hostname resolution"
+  command -v dig &>/dev/null || { echo "ERROR: 'dig' not found — install bind-utils (dnf install -y bind-utils)" >&2; return 1; }
+
+  step "Waiting for cloud-init + DHCP hostname registration (up to ${VM_BOOT_TIMEOUT}s)"
+  local -A short_for=(["$VM_DB"]="$VM_DB_SHORT" ["$VM_BACKEND"]="$VM_BACKEND_SHORT" ["$VM_FRONTEND"]="$VM_FRONTEND_SHORT")
+  local results
+  results=$(wait_for_vm_dns "$VM_DB" "$VM_BACKEND" "$VM_FRONTEND")
+
+  strip_managed_hosts_block
+  local tmp; tmp=$(mktemp)
+  {
+    echo "# >>> im-train-demo >>>"
+    for fqdn in "$VM_DB" "$VM_BACKEND" "$VM_FRONTEND"; do
+      local ip
+      ip=$(awk -v f="$fqdn" '$1==f{print $2}' <<<"$results")
+      if [[ -n "$ip" ]]; then
+        echo "${ip} ${fqdn} ${short_for[$fqdn]}"
+      else
+        echo "  Warning: ${fqdn} never resolved via dnsmasq (timed out after ${VM_BOOT_TIMEOUT}s — check cloud-init on that VM)" >&2
+      fi
+    done
+    echo "# <<< im-train-demo <<<"
+  } >> "$tmp"
+  sudo bash -c "cat '$tmp' >> /etc/hosts"; rm -f "$tmp"
+  step "/etc/hosts updated — *.${DOMAIN} now resolves locally (ping + ssh)"
+}
+
+# ─────────────────────────────────────────────────────────────
 # Config: load or prompt for VM hostnames
 # ─────────────────────────────────────────────────────────────
 ensure_vm_config() {
@@ -124,6 +201,10 @@ ensure_vm_config() {
     _derive_names
     return
   fi
+
+  # Resolve permission on the ssh key
+  local key="$SCRIPT_DIR/baseos/demo-key"
+  [[ -f "$key" ]] && chmod 600 "$key" 2>/dev/null || true
 
   echo -e "${BOLD}${CYAN}VM Hostname Configuration${RESET}"
   echo ""
@@ -369,6 +450,9 @@ provision_vms() {
   echo ""
   step "All 3 VMs are running"
   info "Wait for cloud-init to complete, then SSH with: ssh ${VM_USER}@<hostname>"
+
+  # Run the sync for the newly created vms
+  sync_hosts_file
 }
 
 # ─────────────────────────────────────────────────────────────
@@ -426,6 +510,9 @@ cleanup() {
               "${VM_DB_SHORT}" "${VM_BACKEND_SHORT}" "${VM_FRONTEND_SHORT}"; do
     ssh-keygen -R "$host" 2>/dev/null || true
   done
+
+  step "Removing im-train-demo entries from /etc/hosts"
+  strip_managed_hosts_block
 
   step "Removing config file"
   rm -f "$CONFIG_FILE"
