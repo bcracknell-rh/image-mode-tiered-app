@@ -37,6 +37,8 @@ REGISTRY_CONFIG_LOADED=false
 VM_CONFIG_LOADED=false
 INFRA_CONFIG_LOADED=false
 
+chmod 600 "$SCRIPT_DIR"/baseos/demo-key* 2>/dev/null || true
+
 banner() {
   echo ""
   echo -e "${BOLD}${CYAN}════════════════════════════════════════════════════════════${RESET}"
@@ -250,6 +252,21 @@ NETXML
   sudo iptables -A FORWARD -d "${SUBNET}" -m conntrack --ctstate NEW,ESTABLISHED,RELATED -j ACCEPT
   sudo iptables -A FORWARD -s "${SUBNET}" -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
 
+  step "Configuring NetworkManager to forward ${DOMAIN} queries to libvirt dnsmasq"
+  if ! grep -qs 'dns=dnsmasq' /etc/NetworkManager/conf.d/localdns.conf 2>/dev/null; then
+    sudo tee /etc/NetworkManager/conf.d/localdns.conf >/dev/null <<NMDNS
+[main]
+dns=dnsmasq
+NMDNS
+  fi
+
+  sudo tee /etc/NetworkManager/dnsmasq.d/libvirt_dnsmasq.conf >/dev/null <<NMDNSMASQ
+server=/${DOMAIN}/${subnet_gw}
+NMDNSMASQ
+
+  step "Restarting NetworkManager to apply DNS forwarding"
+  sudo systemctl restart NetworkManager
+
   echo ""
   step "Network ${NETWORK_NAME} is active with DNS for ${DOMAIN}"
 }
@@ -418,6 +435,13 @@ cleanup() {
   sudo iptables -D FORWARD -d "${subnet}" -m conntrack --ctstate NEW,ESTABLISHED,RELATED -j ACCEPT 2>/dev/null || true
   sudo iptables -D FORWARD -s "${subnet}" -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT 2>/dev/null || true
 
+  step "Removing NetworkManager DNS forwarding for ${DOMAIN}"
+  sudo rm -f /etc/NetworkManager/dnsmasq.d/libvirt_dnsmasq.conf 2>/dev/null || true
+  if [ ! "$(ls -A /etc/NetworkManager/dnsmasq.d/ 2>/dev/null)" ]; then
+    sudo rm -f /etc/NetworkManager/conf.d/localdns.conf 2>/dev/null || true
+  fi
+  sudo systemctl restart NetworkManager 2>/dev/null || true
+
   step "Removing network: ${NETWORK_NAME}"
   sudo virsh net-destroy "${NETWORK_NAME}" 2>/dev/null || true
   sudo virsh net-undefine "${NETWORK_NAME}" 2>/dev/null || true
@@ -510,6 +534,9 @@ step2_convert_qcow2() {
   step "Converting baseos:rhel10.1 to qcow2 using bootc-image-builder"
   mkdir -p "$SCRIPT_DIR/output"
 
+  step "Pulling baseos image into sudo container storage"
+  sudo podman pull "${REGISTRY}/image-mode-baseos:rhel10.1"
+
   sudo podman run --rm -it --privileged --pull=newer \
     --security-opt label=type:unconfined_t \
     -v "$SCRIPT_DIR/output:/output" \
@@ -524,7 +551,7 @@ step2_convert_qcow2() {
   local img_name="baseos-rhel10.1-${timestamp}.qcow2"
   cp "$SCRIPT_DIR/output/qcow2/disk.qcow2" "$VM_IMAGES_DIR/${img_name}"
 
-  rm -rf "$SCRIPT_DIR/output"
+  sudo rm -rf "$SCRIPT_DIR/output"
 
   echo ""
   step "qcow2 image saved: ${VM_IMAGES_DIR}/${img_name}"
@@ -580,11 +607,25 @@ step3_deploy_db() {
   echo ""
   info "After reboot, PostgreSQL initializes automatically."
   echo ""
+  echo "  Copy/paste:"
+  echo "  ─────────────────────────────────────────────"
+  echo "  ssh -i baseos/demo-key ${VM_USER}@${VM_DB}"
+  echo "  sudo bootc switch --apply --soft-reboot=auto ${REGISTRY}/image-mode-db:pg16"
+  echo "  ─────────────────────────────────────────────"
+  pause
 
   step "SSH again to verify:"
   info "ssh -i baseos/demo-key ${VM_USER}@${VM_DB}"
   vm_cmd "${VM_DB}" "sudo systemctl status train-tickets-db"
   vm_cmd "${VM_DB}" "sudo -u postgres psql -d train_tickets -c 'SELECT count(*) FROM stations;'"
+  echo ""
+  echo "  Copy/paste:"
+  echo "  ─────────────────────────────────────────────"
+  echo "  ssh -i baseos/demo-key ${VM_USER}@${VM_DB}"
+  echo "  sudo systemctl status train-tickets-db"
+  echo "  sudo -u postgres psql -d train_tickets -c 'SELECT count(*) FROM stations;'"
+  echo "  ─────────────────────────────────────────────"
+  pause
 }
 
 # ─────────────────────────────────────────────────────────────
@@ -655,22 +696,47 @@ step4_deploy_apps() {
   info "ssh -i baseos/demo-key ${VM_USER}@${VM_BACKEND}"
   vm_cmd "${VM_BACKEND}" "sudo bootc switch --apply --soft-reboot=auto ${REGISTRY}/image-mode-backend:v1.0"
   echo ""
+  echo "  Copy/paste:"
+  echo "  ─────────────────────────────────────────────"
+  echo "  ssh -i baseos/demo-key ${VM_USER}@${VM_BACKEND}"
+  echo "  sudo bootc switch --apply --soft-reboot=auto ${REGISTRY}/image-mode-backend:v1.0"
+  echo "  ─────────────────────────────────────────────"
+  pause
 
   step "SSH into the frontend VM and switch to v1.0:"
   info "ssh -i baseos/demo-key ${VM_USER}@${VM_FRONTEND}"
   vm_cmd "${VM_FRONTEND}" "sudo bootc switch --apply --soft-reboot=auto ${REGISTRY}/image-mode-frontend:v1.0"
   echo ""
+  echo "  Copy/paste:"
+  echo "  ─────────────────────────────────────────────"
+  echo "  ssh -i baseos/demo-key ${VM_USER}@${VM_FRONTEND}"
+  echo "  sudo bootc switch --apply --soft-reboot=auto ${REGISTRY}/image-mode-frontend:v1.0"
+  echo "  ─────────────────────────────────────────────"
+  pause
 
   step "SSH again to verify after reboot:"
   info "ssh -i baseos/demo-key ${VM_USER}@${VM_BACKEND}"
   vm_cmd "${VM_BACKEND}" "curl http://localhost:3001/api/health"
   info "Expected: {\"status\":\"ok\",\"backend\":{\"status\":\"ok\"},\"database\":{\"status\":\"ok\"}}"
   echo ""
+  echo "  Copy/paste:"
+  echo "  ─────────────────────────────────────────────"
+  echo "  ssh -i baseos/demo-key ${VM_USER}@${VM_BACKEND}"
+  echo "  curl http://localhost:3001/api/health"
+  echo "  ─────────────────────────────────────────────"
+  pause
+
   step "Verify bootc-api on each VM:"
   vm_cmd "${VM_DB}" "curl http://localhost:8005/health"
   vm_cmd "${VM_BACKEND}" "curl http://localhost:8005/health"
   vm_cmd "${VM_FRONTEND}" "curl http://localhost:8005/health"
   info "Expected: {\"status\":\"ok\"} from each"
+  echo ""
+  echo "  Copy/paste (run on each VM):"
+  echo "  ─────────────────────────────────────────────"
+  echo "  curl http://localhost:8005/health"
+  echo "  ─────────────────────────────────────────────"
+  pause
 }
 
 # ─────────────────────────────────────────────────────────────
@@ -746,23 +812,46 @@ step5a_update_vms() {
   info "ssh -i baseos/demo-key ${VM_USER}@${VM_BACKEND}"
   vm_cmd "${VM_BACKEND}" "sudo bootc switch --apply --soft-reboot=auto ${REGISTRY}/image-mode-backend:v1.1"
   echo ""
+  echo "  Copy/paste:"
+  echo "  ─────────────────────────────────────────────"
+  echo "  ssh -i baseos/demo-key ${VM_USER}@${VM_BACKEND}"
+  echo "  sudo bootc switch --apply --soft-reboot=auto ${REGISTRY}/image-mode-backend:v1.1"
+  echo "  ─────────────────────────────────────────────"
+  pause
 
   step "SSH into the frontend VM and switch to v1.1:"
   info "ssh -i baseos/demo-key ${VM_USER}@${VM_FRONTEND}"
   vm_cmd "${VM_FRONTEND}" "sudo bootc switch --apply --soft-reboot=auto ${REGISTRY}/image-mode-frontend:v1.1"
   echo ""
+  echo "  Copy/paste:"
+  echo "  ─────────────────────────────────────────────"
+  echo "  ssh -i baseos/demo-key ${VM_USER}@${VM_FRONTEND}"
+  echo "  sudo bootc switch --apply --soft-reboot=auto ${REGISTRY}/image-mode-frontend:v1.1"
+  echo "  ─────────────────────────────────────────────"
+  pause
 
   step "SSH again to verify after soft reboot:"
   info "ssh -i baseos/demo-key ${VM_USER}@${VM_BACKEND}"
   vm_cmd "${VM_BACKEND}" "curl http://localhost:3001/api/timetable"
   info "Expected: Train timetable data (new Timetable feature)"
   echo ""
-  vm_cmd "${VM_FRONTEND}" "curl http://localhost:5173/"
-  info "Expected: 200 OK — Timetable page now available in the UI"
-  echo ""
+  echo "  Copy/paste:"
+  echo "  ─────────────────────────────────────────────"
+  echo "  ssh -i baseos/demo-key ${VM_USER}@${VM_BACKEND}"
+  echo "  curl http://localhost:3001/api/timetable"
+  echo "  ─────────────────────────────────────────────"
+  pause
+
   step "Verify bootc-api status:"
   vm_cmd "${VM_BACKEND}" "curl http://localhost:8005/api/v1/status/booted | jq .image.image.image"
   info "Expected: image-mode-backend:v1.1"
+  echo ""
+  echo "  Copy/paste:"
+  echo "  ─────────────────────────────────────────────"
+  echo "  ssh -i baseos/demo-key ${VM_USER}@${VM_BACKEND}"
+  echo "  curl http://localhost:8005/api/v1/status/booted | jq .image.image.image"
+  echo "  ─────────────────────────────────────────────"
+  pause
 }
 
 # ─────────────────────────────────────────────────────────────
@@ -835,11 +924,24 @@ step5c_rebuild_db() {
   info "ssh -i baseos/demo-key ${VM_USER}@${VM_DB}"
   vm_cmd "${VM_DB}" "sudo bootc upgrade --apply --soft-reboot=auto"
   echo ""
+  echo "  Copy/paste:"
+  echo "  ─────────────────────────────────────────────"
+  echo "  ssh -i baseos/demo-key ${VM_USER}@${VM_DB}"
+  echo "  sudo bootc upgrade --apply --soft-reboot=auto"
+  echo "  ─────────────────────────────────────────────"
+  pause
 
   step "SSH again to verify after reboot:"
   info "ssh -i baseos/demo-key ${VM_USER}@${VM_DB}"
   vm_cmd "${VM_DB}" "cat /etc/redhat-release"
   info "Expected: Red Hat Enterprise Linux release 10.2"
+  echo ""
+  echo "  Copy/paste:"
+  echo "  ─────────────────────────────────────────────"
+  echo "  ssh -i baseos/demo-key ${VM_USER}@${VM_DB}"
+  echo "  cat /etc/redhat-release"
+  echo "  ─────────────────────────────────────────────"
+  pause
 }
 
 step5c_rebuild_all() {
@@ -919,25 +1021,57 @@ step5c_upgrade_vms() {
   info "ssh -i baseos/demo-key ${VM_USER}@${VM_DB}"
   vm_cmd "${VM_DB}" "sudo bootc upgrade --apply --soft-reboot=auto"
   echo ""
+  echo "  Copy/paste:"
+  echo "  ─────────────────────────────────────────────"
+  echo "  ssh -i baseos/demo-key ${VM_USER}@${VM_DB}"
+  echo "  sudo bootc upgrade --apply --soft-reboot=auto"
+  echo "  ─────────────────────────────────────────────"
+  pause
 
   step "SSH into the backend VM and upgrade:"
   info "ssh -i baseos/demo-key ${VM_USER}@${VM_BACKEND}"
   vm_cmd "${VM_BACKEND}" "sudo bootc upgrade --apply --soft-reboot=auto"
   echo ""
+  echo "  Copy/paste:"
+  echo "  ─────────────────────────────────────────────"
+  echo "  ssh -i baseos/demo-key ${VM_USER}@${VM_BACKEND}"
+  echo "  sudo bootc upgrade --apply --soft-reboot=auto"
+  echo "  ─────────────────────────────────────────────"
+  pause
 
   step "SSH into the frontend VM and upgrade:"
   info "ssh -i baseos/demo-key ${VM_USER}@${VM_FRONTEND}"
   vm_cmd "${VM_FRONTEND}" "sudo bootc upgrade --apply --soft-reboot=auto"
   echo ""
+  echo "  Copy/paste:"
+  echo "  ─────────────────────────────────────────────"
+  echo "  ssh -i baseos/demo-key ${VM_USER}@${VM_FRONTEND}"
+  echo "  sudo bootc upgrade --apply --soft-reboot=auto"
+  echo "  ─────────────────────────────────────────────"
+  pause
 
   step "SSH again to verify after soft reboot:"
   info "ssh -i baseos/demo-key ${VM_USER}@${VM_FRONTEND}"
   vm_cmd "${VM_FRONTEND}" "cat /etc/redhat-release"
   info "Expected: Red Hat Enterprise Linux release 10.2"
   echo ""
+  echo "  Copy/paste:"
+  echo "  ─────────────────────────────────────────────"
+  echo "  ssh -i baseos/demo-key ${VM_USER}@${VM_FRONTEND}"
+  echo "  cat /etc/redhat-release"
+  echo "  ─────────────────────────────────────────────"
+  pause
+
   step "Verify bootc-api reports new OS version:"
   vm_cmd "${VM_FRONTEND}" "curl http://localhost:8005/api/v1/status/booted | jq .image.version"
   info "Expected: 10.2"
+  echo ""
+  echo "  Copy/paste:"
+  echo "  ─────────────────────────────────────────────"
+  echo "  ssh -i baseos/demo-key ${VM_USER}@${VM_FRONTEND}"
+  echo "  curl http://localhost:8005/api/v1/status/booted | jq .image.version"
+  echo "  ─────────────────────────────────────────────"
+  pause
 }
 
 # ─────────────────────────────────────────────────────────────
@@ -998,7 +1132,7 @@ prebuild() {
   echo ""
 
   step "=== Base OS RHEL 10.2 ==="
-  _prebuild_baseos rhel10.2
+  step5b_build_baseos
   echo ""
 
   step "=== Database (pg16) + Apps v1.1 on RHEL 10.2 ==="
